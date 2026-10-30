@@ -100,6 +100,107 @@ namespace UnityEngine.XR.Interaction.Toolkit.Samples.StarterAssets
         [Tooltip("Event fired when the active ray interactor changes between interaction and teleport.")]
         UnityEvent<IXRRayProvider> m_RayInteractorChanged;
 
+        [Space]
+        [Header("Floating Object (A Button)")]
+ 
+        [SerializeField]
+        [Tooltip("Button action for the A button on the RIGHT controller (binding: <XRController>{RightHand}/primaryButton). Leave empty on the left controller's manager.")]
+        InputActionReference m_SpawnObjectAction;
+ 
+        [SerializeField]
+        [Tooltip("Distance in front of the user's head where the object first appears, in meters.")]
+        float m_ObjectDistance = 0.7f;
+ 
+        [SerializeField]
+        [Tooltip("Size of the floating object, in meters.")]
+        float m_ObjectSize = 0.2f;
+        [SerializeField]
+        [Tooltip("URP material applied to the spawned shapes.")]
+        Material m_ObjectMaterial;
+
+            int m_ObjectState;
+        GameObject m_FloatingObject;
+ 
+        void SetupFloatingObjectInput()
+        {
+            var action = GetInputAction(m_SpawnObjectAction);
+            if (action == null)
+            {
+                Debug.LogWarning("Spawn Object Action is NOT assigned on " + name, this);
+                return;
+            }
+
+            action.performed += OnSpawnObjectPerformed;
+            action.Enable();
+            Debug.Log($"Spawn action '{action.name}' enabled={action.enabled}, bound controls={action.controls.Count}", this);
+        }
+        void TeardownFloatingObjectInput()
+        {
+            var action = GetInputAction(m_SpawnObjectAction);
+            if (action != null)
+                action.performed -= OnSpawnObjectPerformed;
+        }
+ 
+        void OnSpawnObjectPerformed(InputAction.CallbackContext context)
+        {
+            // 0 -> 1 (creates the cube), then 1 -> 2 -> 3 -> back to 1.
+            m_ObjectState = m_ObjectState >= 3 ? 1 : m_ObjectState + 1;
+            ShowFloatingObject();
+            Debug.Log("SPAWNED");
+        }
+ 
+        void ShowFloatingObject()
+        {
+            Vector3 position;
+            Quaternion rotation;
+ 
+            if (m_FloatingObject != null)
+            {
+                // Swap the shape in place.
+                position = m_FloatingObject.transform.position;
+                rotation = m_FloatingObject.transform.rotation;
+                Destroy(m_FloatingObject);
+            }
+            else
+            {
+                var cam = Camera.main;
+                if (cam == null)
+                {
+                    Debug.LogWarning("No camera tagged MainCamera found, can't place the floating object.", this);
+                    m_ObjectState = 0;
+                    return;
+                }
+ 
+                position = cam.transform.position + cam.transform.forward * m_ObjectDistance;
+                rotation = Quaternion.identity;
+            }
+ 
+            PrimitiveType shape;
+            var scale = Vector3.one * m_ObjectSize;
+            switch (m_ObjectState)
+            {
+                case 1:
+                    shape = PrimitiveType.Cube;
+                    break;
+                case 2:
+                    shape = PrimitiveType.Sphere;
+                    break;
+                case 3:
+                    shape = PrimitiveType.Cylinder;
+                    scale.y *= 0.5f; // Unity's cylinder is 2 units tall, so halve it to keep it proportional.
+                    break;
+                default:
+                    return;
+            }
+ 
+            m_FloatingObject = GameObject.CreatePrimitive(shape);
+            if (m_ObjectMaterial != null)
+            m_FloatingObject.GetComponent<Renderer>().sharedMaterial = m_ObjectMaterial;
+            m_FloatingObject.name = $"FloatingObject_{shape}";
+            m_FloatingObject.transform.SetPositionAndRotation(position, rotation);
+            m_FloatingObject.transform.localScale = scale;
+        }
+
         public bool smoothMotionEnabled
         {
             get => m_SmoothMotionEnabled;
@@ -246,6 +347,7 @@ namespace UnityEngine.XR.Interaction.Toolkit.Samples.StarterAssets
                 snapTurnAction.canceled -= OnStopLocomotion;
             }
         }
+        
 
         void OnStartTeleport(InputAction.CallbackContext context)
         {
@@ -402,11 +504,13 @@ namespace UnityEngine.XR.Interaction.Toolkit.Samples.StarterAssets
             }
 
             SetupInteractorEvents();
+            SetupFloatingObjectInput();
         }
 
         protected void OnDisable()
         {
             TeardownInteractorEvents();
+            TeardownFloatingObjectInput(); 
         }
 
         protected void Start()
